@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MythicVoice | Next-Gen AI Assistant</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Background Elements -->
+        <div class="glow-orb orb-1"></div>
+        <div class="glow-orb orb-2"></div>
+        <div class="noise-overlay"></div>
+
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <div class="logo">
+                <span class="logo-icon">💠</span>
+                <span class="logo-text">MythicVoice</span>
+            </div>
+            
+            <div class="nav-section">
+                <span class="section-label">Main Characters</span>
+                <div class="character-card active" data-monster="toby">
+                    <div class="avatar-ring">
+                        <div class="avatar" style="background: linear-gradient(135deg, #ff007a, #7000ff);"></div>
+                    </div>
+                    <div class="character-info">
+                        <span class="name">Toby</span>
+                        <span class="subtext">The Chaos Gremlin</span>
+                    </div>
+                </div>
+                <div class="character-card" data-monster="glitch">
+                    <div class="avatar-ring">
+                        <div class="avatar" style="background: linear-gradient(135deg, #00f2ff, #0070ff);"></div>
+                    </div>
+                    <div class="character-info">
+                        <span class="name">Glitch</span>
+                        <span class="subtext">Static Phantom</span>
+                    </div>
+                </div>
+                <div class="character-card" data-monster="ember">
+                    <div class="avatar-ring">
+                        <div class="avatar" style="background: linear-gradient(135deg, #ff7a00, #ff0000);"></div>
+                    </div>
+                    <div class="character-info">
+                        <span class="name">Ember</span>
+                        <span class="subtext">Magma Spirit</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="nav-footer">
+                <div class="status-indicator">
+                    <div class="status-dot"></div>
+                    <span>System Online</span>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-bar">
+                <div class="search-bar">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" placeholder="Ask anything...">
+                </div>
+                <div class="user-profile">
+                    <div class="notifications">🔔</div>
+                    <div class="avatar-small"></div>
+                </div>
+            </header>
+
+            <section class="display-area">
+                <div class="monster-container" id="monsterStage">
+                    <div class="monster-core" id="voiceBtn">
+                        <div class="eye left-eye"><div class="pupil"></div></div>
+                        <div class="eye right-eye"><div class="pupil"></div></div>
+                        <div class="mouth"></div>
+                        <!-- Pulse Rings -->
+                        <div class="pulse-ring ring-1"></div>
+                        <div class="pulse-ring ring-2"></div>
+                    </div>
+                    
+                    <div class="visualizer-container">
+                        <canvas id="audioVisualizer"></canvas>
+                    </div>
+                </div>
+
+                <div class="interaction-pane">
+                    <div class="transcript-box">
+                        <p id="transcriptText" class="placeholder">I'm listening for your command...</p>
+                    </div>
+
+                    <div class="manual-input-container">
+                        <textarea id="manualInput" placeholder="Type your scheduling instructions here... (e.g. 'Book a meeting for Friday at 2pm')"></textarea>
+                        <button id="sendManualBtn">Send Instruction</button>
+                    </div>
+                    
+                    <div class="action-dock">
+                        <button class="action-btn" id="historyBtn">
+                            <span class="btn-icon">📜</span>
+                            <span>History</span>
+                        </button>
+                        <button class="action-btn primary" id="captureBtn">
+                            <span class="btn-icon">🎤</span>
+                            <span id="captureLabel">Capture</span>
+                        </button>
+                        <button class="action-btn" id="settingsBtn">
+                            <span class="btn-icon">⚙️</span>
+                            <span>Settings</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Right Panel -->
+        <aside class="right-panel">
+            <div class="panel-header">
+                <h3>Live Feed</h3>
+                <span class="refresh">🔄</span>
+            </div>
+            
+            <div class="feed-list" id="actionFeed">
+                <div class="feed-item" data-type="calendar">
+                    <div class="item-icon">📅</div>
+                    <div class="item-content">
+                        <span class="item-title">Calendar Booked</span>
+                        <span class="item-desc">Meeting with Team Alpha</span>
+                    </div>
+                    <span class="item-time">2m ago</span>
+                </div>
+                <div class="feed-item" data-type="mail">
+                    <div class="item-icon">📧</div>
+                    <div class="item-content">
+                        <span class="item-title">Draft Created</span>
+                        <span class="item-desc">Project Update Email</span>
+                    </div>
+                    <span class="item-time">15m ago</span>
+                </div>
+                <div class="feed-item" data-type="task">
+                    <div class="item-icon">✅</div>
+                    <div class="item-content">
+                        <span class="item-title">Task Completed</span>
+                        <span class="item-desc">Update monster skins</span>
+                    </div>
+                    <span class="item-time">1h ago</span>
+                </div>
+            </div>
+
+            <div class="storage-card">
+                <div class="storage-info">
+                    <span>Voice Model Storage</span>
+                    <span>72%</span>
+                </div>
+                <div class="storage-bar">
+                    <div class="bar-fill" style="width: 72%"></div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

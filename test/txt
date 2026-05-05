@@ -1,0 +1,9 @@
+audio
+curl -X POST "https://aarif01.app.n8n.cloud/webhook-test/customer-support" -H "Content-Type: multipart/form-data" -F "audio=@aarif.ogg;type=audio/ogg" -F "channel=voice" -F "session_id=aarif_voice_test_005"
+
+text
+curl -X POST "https://aarif01.app.n8n.cloud/webhook-test/customer-support" -H "Content-Type: application/json" -d '{
+  "channel": "text",
+  "message": "Book a consultation for tomorrow at 10 AM",
+  "session_id": "test_session_123"
+}'
