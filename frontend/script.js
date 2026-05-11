@@ -7,6 +7,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('audioVisualizer');
     const ctx = canvas.getContext('2d');
     const characterCards = document.querySelectorAll('.character-card');
+    const searchInput = document.querySelector('.search-bar input');
+    const manualInput = document.getElementById('manualInput');
+    const sendManualBtn = document.getElementById('sendManualBtn');
     
     let isRecording = false;
     let mediaRecorder;
@@ -16,6 +19,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let dataArray;
     let source;
     let animationId;
+    let socket;
+    let liveTranscript = '';
 
     // Initialize Web Audio API for Real Visualizer
     async function initAudio() {
@@ -105,6 +110,48 @@ document.addEventListener('DOMContentLoaded', () => {
         return 'session_' + Math.random().toString(36).substr(2, 9);
     }
 
+    let recognition;
+    let isSpeaking = false;
+
+    // Initialize Speech Recognition
+    function initRecognition() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            console.error("Speech Recognition not supported in this browser.");
+            return null;
+        }
+
+        recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        recognition.onresult = (event) => {
+            let interimTranscript = '';
+            let finalTranscript = '';
+
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript;
+                } else {
+                    interimTranscript += event.results[i][0].transcript;
+                }
+            }
+
+            if (interimTranscript || finalTranscript) {
+                transcriptText.innerText = finalTranscript || interimTranscript;
+                transcriptText.classList.remove('placeholder');
+            }
+        };
+
+        recognition.onerror = (event) => {
+            console.error("Recognition error:", event.error);
+            if (isRecording) toggleRecording();
+        };
+
+        return recognition;
+    }
+
     async function toggleRecording() {
         if (!mediaRecorder) {
             const success = await initAudio();
@@ -114,124 +161,138 @@ document.addEventListener('DOMContentLoaded', () => {
         isRecording = !isRecording;
         
         if (isRecording) {
-            audioChunks = [];
-            mediaRecorder.start();
+            // Setup WebSocket for Streaming
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            socket = new WebSocket(`${protocol}//${window.location.host}`);
+            
+            socket.onopen = () => {
+                socket.send(JSON.stringify({ type: 'start' }));
+            };
+
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'ready') {
+                    mediaRecorder.start(100); // Send chunks every 100ms
+                } else if (data.type === 'transcript') {
+                    if (data.isFinal) {
+                        liveTranscript += ' ' + data.text;
+                    }
+                    transcriptText.innerText = liveTranscript + (data.isFinal ? '' : ' ' + data.text);
+                    transcriptText.classList.remove('placeholder');
+                }
+            };
+
+            liveTranscript = '';
             voiceBtn.classList.add('recording');
             captureBtn.classList.add('active');
             captureLabel.innerText = "Stop";
-            transcriptText.innerText = "Listening... Toby is all ears!";
+            transcriptText.innerText = "Listening with Deepgram...";
             transcriptText.classList.remove('placeholder');
             if (audioContext.state === 'suspended') audioContext.resume();
             drawVisualizer();
+            
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
+                    socket.send(event.data);
+                }
+            };
         } else {
             mediaRecorder.stop();
+            if (socket) socket.close();
+            
             voiceBtn.classList.remove('recording');
+            captureBtn.classList.add('thinking'); // Added a thinking state
             captureBtn.classList.remove('active');
             captureLabel.innerText = "Capture";
-            transcriptText.innerText = "Toby is thinking...";
+            
+            const finalSpeech = transcriptText.innerText;
+            if (finalSpeech && !finalSpeech.includes("Listening...")) {
+                showThoughts(true);
+                updateThoughtStep('think', 'active');
+                transcriptText.innerText = "Toby is processing...";
+                sendTextToBrain(finalSpeech);
+            } else {
+                transcriptText.innerText = "Toby didn't catch that.";
+            }
+            
             cancelAnimationFrame(animationId);
         }
     }
 
-    async function sendAudioToN8N() {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-        const formData = new FormData();
-        formData.append('audio', audioBlob, 'recording.webm');
-        formData.append('channel', 'voice');
-        formData.append('session_id', generateSessionId());
-        
-        // Add current monster context
-        const activeMonster = document.querySelector('.character-card.active').dataset.monster;
-        formData.append('monster', activeMonster);
-
-        await processN8NRequest(formData);
+    function showThoughts(show) {
+        const panel = document.getElementById('thoughtPanel');
+        if (show) {
+            panel.classList.remove('hidden');
+            document.querySelectorAll('.thought-step').forEach(s => s.classList.remove('active', 'completed'));
+        } else {
+            panel.classList.add('hidden');
+        }
     }
 
-    // Text Input Handling
-    const searchInput = document.querySelector('.search-bar input');
-    const manualInput = document.getElementById('manualInput');
-    const sendManualBtn = document.getElementById('sendManualBtn');
-
-    searchInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' && searchInput.value.trim()) {
-            sendTextToN8N(searchInput.value.trim());
-            searchInput.value = '';
+    function updateThoughtStep(stepId, state) {
+        const step = document.getElementById('step' + stepId.charAt(0).toUpperCase() + stepId.slice(1));
+        if (state === 'active') {
+            step.classList.add('active');
+            step.classList.remove('completed');
+        } else if (state === 'completed') {
+            step.classList.remove('active');
+            step.classList.add('completed');
         }
-    });
-
-    sendManualBtn.addEventListener('click', () => {
-        if (manualInput.value.trim()) {
-            sendTextToN8N(manualInput.value.trim());
-            manualInput.value = '';
-        }
-    });
-
-    async function sendTextToN8N(text) {
-        transcriptText.innerText = "Processing text...";
-        transcriptText.classList.remove('placeholder');
-        
-        const formData = new FormData();
-        formData.append('channel', 'text');
-        formData.append('text', text);
-        formData.append('session_id', generateSessionId());
-        
-        const activeMonster = document.querySelector('.character-card.active').dataset.monster;
-        formData.append('monster', activeMonster);
-
-        await processN8NRequest(formData);
     }
 
-    async function processN8NRequest(formData) {
+    async function sendTextToBrain(text) {
+        const activeMonster = document.querySelector('.character-card.active').dataset.monster;
+        
         try {
-            const response = await fetch('/api/voice', {
+            const response = await fetch('/api/brain', {
                 method: 'POST',
-                body: formData
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    text: text, 
+                    monster: activeMonster,
+                    session_id: generateSessionId()
+                })
             });
 
-            if (!response.ok) throw new Error('Network response was not ok');
+            if (!response.ok) throw new Error('Brain request failed');
 
-            const contentType = response.headers.get('content-type');
+            const data = await response.json();
             
-            if (contentType && contentType.includes('audio')) {
-                const blob = await response.blob();
-                const audioUrl = URL.createObjectURL(blob);
-                const audio = new Audio(audioUrl);
-                
-                transcriptText.innerText = "Toby is speaking...";
-                
-                // Mouth animation for audio playback
-                audio.onplay = () => document.querySelector('.mouth').classList.add('talking');
-                audio.onended = () => {
-                    document.querySelector('.mouth').classList.remove('talking');
-                    transcriptText.innerText = "Command processed. Need anything else?";
-                };
-                
-                audio.play();
-            } else {
-                const data = await response.json();
-                
-                // n8n workflow might return an object with 'output' or 'response'
-                const msg = data.output?.response || data.response || data.message || "Toby has finished!";
-                transcriptText.innerText = msg;
-
-                const intent = data.output?.intent || data.intent;
-                if (intent) {
-                    addFeedItem(intent.type || 'task', intent.title || 'Action Complete', 'Processed by n8n');
-                }
-
-                // Speak the response text
-                speakText(msg);
+            // Transition Thoughts
+            updateThoughtStep('think', 'completed');
+            updateThoughtStep('process', 'active');
+            if (data.thinking) {
+                document.querySelector('#stepProcess .step-text').innerText = data.thinking;
             }
+
+            // Small delay to let user read the thought
+            await new Promise(r => setTimeout(r, 1000));
+            
+            // Update UI with the AI's response
+            transcriptText.innerText = data.response;
+            updateThoughtStep('process', 'completed');
+            
+            // Trigger n8n if an action was detected
+            if (data.action) {
+                addFeedItem(data.action.type, data.action.title, data.action.description);
+            }
+
+            // Speak the response
+            speakText(data.response);
+            setTimeout(() => showThoughts(false), 2000);
+            
         } catch (err) {
-            console.error("Failed to send to n8n:", err);
-            transcriptText.innerText = "Error: Couldn't reach Toby's brain.";
+            console.error("Brain error:", err);
+            transcriptText.innerText = "Error: Toby's brain is fuzzy right now.";
         }
     }
 
     async function speakText(text) {
         const activeMonster = document.querySelector('.character-card.active').dataset.monster;
+        if (isSpeaking) return;
         
         try {
+            isSpeaking = true;
             const response = await fetch('/api/tts', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -247,25 +308,74 @@ document.addEventListener('DOMContentLoaded', () => {
             audio.onplay = () => document.querySelector('.mouth').classList.add('talking');
             audio.onended = () => {
                 document.querySelector('.mouth').classList.remove('talking');
-                if (transcriptText.innerText === "Toby is speaking...") {
-                    transcriptText.innerText = "Command processed. Need anything else?";
-                }
+                isSpeaking = false;
             };
             
             audio.play();
         } catch (err) {
-            console.error("ElevenLabs TTS failed, falling back to browser synthesis:", err);
-            
-            // Fallback to browser synthesis if API fails
+            console.error("TTS failed:", err);
+            isSpeaking = false;
+            // Fallback to browser synthesis
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.onstart = () => document.querySelector('.mouth').classList.add('talking');
-            utterance.onend = () => document.querySelector('.mouth').classList.remove('talking');
+            utterance.onend = () => {
+                document.querySelector('.mouth').classList.remove('talking');
+            };
             window.speechSynthesis.speak(utterance);
         }
     }
 
+    // Keep legacy n8n audio support if needed, but we prefer sendTextToBrain
+    async function sendAudioToN8N() {
+        // We now use real-time transcription, so we don't strictly need to send raw audio to n8n 
+        // unless you want n8n to do the processing.
+    }
+
+    // ... (rest of the event listeners)
     voiceBtn.addEventListener('click', toggleRecording);
     captureBtn.addEventListener('click', toggleRecording);
+
+    async function sendTextToWebhook(message) {
+        transcriptText.innerText = "Sending instruction...";
+        transcriptText.classList.remove('placeholder');
+        
+        const payload = {
+            channel: "text",
+            message: message,
+            session_id: generateSessionId()
+        };
+        
+        try {
+            const response = await fetch('https://neo4j.app.n8n.cloud/webhook/customer-support', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            
+            if (!response.ok) throw new Error('Webhook failed');
+            
+            transcriptText.innerText = "Instruction sent successfully!";
+            addFeedItem('task', 'Manual Instruction', message);
+        } catch (err) {
+            console.error("Webhook error:", err);
+            transcriptText.innerText = "Error sending to workflow.";
+        }
+    }
+
+    // Inputs now send directly to the n8n webhook
+    searchInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && searchInput.value.trim()) {
+            sendTextToWebhook(searchInput.value.trim());
+            searchInput.value = '';
+        }
+    });
+
+    sendManualBtn.addEventListener('click', () => {
+        if (manualInput.value.trim()) {
+            sendTextToWebhook(manualInput.value.trim());
+            manualInput.value = '';
+        }
+    });
 
     // Character Selection
     characterCards.forEach(card => {
@@ -300,10 +410,30 @@ document.addEventListener('DOMContentLoaded', () => {
         audio.play().catch(e => console.log("Sound autoplay blocked or file missing:", e));
     }
 
-    function addFeedItem(type, title, desc) {
+    async function updateFeed() {
+        try {
+            const response = await fetch('/api/events');
+            if (!response.ok) throw new Error('Failed to fetch events');
+            const events = await response.json();
+            
+            const feed = document.getElementById('actionFeed');
+            feed.innerHTML = ''; // Clear existing
+            
+            events.forEach(event => {
+                const timeStr = new Date(event.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                addFeedItem(event.type, event.title, event.description, timeStr);
+            });
+        } catch (err) {
+            console.error("Feed update error:", err);
+        }
+    }
+
+    function addFeedItem(type, title, desc, time = 'Just now') {
         const feed = document.getElementById('actionFeed');
         const item = document.createElement('div');
         item.className = 'feed-item';
+        item.onclick = () => alert(`Event Details:\n\nTitle: ${title}\nType: ${type}\nTime: ${time}\n\nDescription: ${desc}`);
+        
         const icons = { calendar: '📅', mail: '📧', task: '✅', escalation: '🆘' };
         
         item.innerHTML = `
@@ -312,10 +442,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 <span class="item-title">${title}</span>
                 <span class="item-desc">${desc}</span>
             </div>
-            <span class="item-time">Just now</span>
+            <span class="item-time">${time}</span>
         `;
         
         feed.prepend(item);
-        if (feed.children.length > 5) feed.lastElementChild.remove();
     }
+
+    // Initial feed load
+    updateFeed();
+    
+    // Add refresh listener
+    document.querySelector('.refresh').addEventListener('click', updateFeed);
 });
